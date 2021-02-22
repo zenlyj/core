@@ -42,6 +42,7 @@ env:
   MYPY_CACHE_VERSION: 1
   HA_SHORT_VERSION: "2026.3"
   DEFAULT_PYTHON: "3.14.2"
+  # Only use default version below
   ALL_PYTHON_VERSIONS: "['3.14.2']"
   # 10.3 is the oldest supported version
   # - 10.3.32 is the version currently shipped with Synology (as of 17 Feb 2022)
@@ -69,14 +70,14 @@ env:
 
 permissions: {}
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+# concurrency:
+#   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+#   cancel-in-progress: true
 
 jobs:
   info:
     name: Collect information & changes data
-    runs-on: ubuntu-24.04
+    runs-on: &runs-on-ubuntu ubuntu-24.04
     permissions:
       contents: read # To check out the repository
       pull-requests: read # For paths-filter to detect changed files
@@ -100,7 +101,8 @@ jobs:
       lint_only: ${{ steps.info.outputs.lint_only }}
       skip_coverage: ${{ steps.info.outputs.skip_coverage }}
     steps:
-      - name: Check out code from GitHub
+      - &checkout
+        name: Check out code from GitHub
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
@@ -363,6 +365,8 @@ jobs:
         uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: venv
+          lookup-only: true
+          fail-on-cache-miss: true
           key: >-
             ${{ runner.os }}-${{ runner.arch }}-${{ steps.python.outputs.python-version }}-${{
             needs.info.outputs.python_cache_key }}
@@ -426,7 +430,7 @@ jobs:
           fi
       - name: Save apt cache
         if: steps.cache-apt-check.outputs.cache-hit != 'true'
-        uses: actions/cache/save@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        uses: &actions-cache-save actions/cache/save@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: |
             ${{ env.APT_CACHE_DIR }}
@@ -446,6 +450,7 @@ jobs:
           uv pip install -r requirements_all_pytest.txt -r requirements_test.txt
           uv pip install -e . --config-settings editable_mode=compat
       - name: Dump pip freeze
+        if: false
         run: |
           python -m venv venv
           . venv/bin/activate
@@ -457,19 +462,22 @@ jobs:
           name: pip-freeze-${{ matrix.python-version }}
           path: pip_freeze.txt
           overwrite: true
+        if: false
       - name: Remove pip_freeze
+        if: false
         run: rm pip_freeze.txt
       - name: Remove generated requirements_all
         if: steps.cache-venv.outputs.cache-hit != 'true'
         run: rm requirements_all_pytest.txt requirements_all_wheels_*.txt
       - name: Check dirty
+        if: false
         run: |
           ./script/check_dirty
 
   hassfest:
     name: Check hassfest
     runs-on: ubuntu-24.04
-    permissions:
+    permissions: &permissions-read
       contents: read
     needs:
       - info
@@ -480,7 +488,7 @@ jobs:
       && github.event.inputs.audit-licenses-only != 'true'
     steps:
       - name: Restore apt cache
-        uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        uses: &actions-cache-restore actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: |
             ${{ env.APT_CACHE_DIR }}
@@ -503,13 +511,15 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           persist-credentials: false
-      - name: Set up Python ${{ env.DEFAULT_PYTHON }}
+      - &setup-python-default
+        name: Set up Python ${{ env.DEFAULT_PYTHON }}
         id: python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: ${{ env.DEFAULT_PYTHON }}
           check-latest: true
-      - name: Restore full Python ${{ env.DEFAULT_PYTHON }} virtual environment
+      - &cache-restore-python-default
+        name: Restore full Python ${{ env.DEFAULT_PYTHON }} virtual environment
         id: cache-venv
         uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
@@ -664,40 +674,130 @@ jobs:
           . venv/bin/activate
           python -m script.licenses check licenses-${PYTHON_VERSION}.json
 
+  pylint-base:
+    name: Pylint base
+    runs-on: *runs-on-ubuntu
+    permissions: *permissions-read
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO_ASTROID: cdce8p/astroid
+      REPO_PYLINT: cdce8p/pylint
+      BRANCH_ASTROID: dev
+      BRANCH_PYLINT: dev
+    outputs:
+      astroid-sha: ${{ steps.fetch-astroid-sha.outputs.sha }}
+      pylint-sha: ${{ steps.fetch-pylint-sha.outputs.sha }}
+    steps:
+      - *setup-python-default
+
+      - name: Fetch astroid sha
+        id: fetch-astroid-sha
+        run: |
+          echo "Checking astroid branch: ${{ env.BRANCH_ASTROID }}"
+          sha=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            /repos/${{ env.REPO_ASTROID }}/git/ref/heads/${{ env.BRANCH_ASTROID }} | \
+            jq -r '.object.sha')
+          echo "sha=$sha" >> $GITHUB_OUTPUT
+          echo "name=(${{ env.BRANCH_ASTROID }} -- $sha)" >> $GITHUB_OUTPUT
+          echo "Found sha: $sha"
+      - name: Fetch pylint sha
+        id: fetch-pylint-sha
+        run: |
+          echo "Checking pylint branch: ${{ env.BRANCH_PYLINT }}"
+          sha=$(gh api \
+            -H "Accept: application/vnd.github+json" \
+            /repos/${{ env.REPO_PYLINT }}/git/ref/heads/${{ env.BRANCH_PYLINT }} | \
+            jq -r '.object.sha')
+          echo "sha=$sha" >> $GITHUB_OUTPUT
+          echo "name=(${{ env.BRANCH_PYLINT }} -- $sha)" >> $GITHUB_OUTPUT
+          echo "Found sha: $sha"
+
+      - name: Create venv
+        run: python -m venv venv
+      - name: Restore custom astroid + pylint versions in venv
+        id: cache-venv-astroid-pylint
+        uses: *actions-cache-restore
+        with:
+          path: &path-pylint-venv-cache |
+            venv/lib/python*/site-packages/astroid*
+            venv/lib/python*/site-packages/pylint*
+            venv/bin/pylint
+          key: &key-pylint-venv-cache >-
+            ${{ runner.os }}-${{ runner.arch }}-${{ steps.python.outputs.python-version }}-venv_pylint-${{
+            env.CACHE_VERSION }}-astroid_${{ steps.fetch-astroid-sha.outputs.sha }}-pylint_${{
+            steps.fetch-pylint-sha.outputs.sha }}
+      - name: Install custom astroid ${{ steps.fetch-astroid-sha.outputs.name }}
+        if: steps.cache-venv-astroid-pylint.outputs.cache-hit != 'true'
+        run: |
+          . venv/bin/activate
+          pip install --no-deps -U git+https://github.com/${{ env.REPO_ASTROID }}.git@${{ env.BRANCH_ASTROID }}
+      - name: Install custom pylint ${{ steps.fetch-pylint-sha.outputs.name }}
+        if: steps.cache-venv-astroid-pylint.outputs.cache-hit != 'true'
+        run: |
+          . venv/bin/activate
+          pip install --no-deps -U git+https://github.com/${{ env.REPO_PYLINT }}.git@${{ env.BRANCH_PYLINT }}
+      - name: Save astroid + pylint versions in venv
+        if: steps.cache-venv-astroid-pylint.outputs.cache-hit != 'true'
+        uses: *actions-cache-save
+        with:
+          path: *path-pylint-venv-cache
+          key: *key-pylint-venv-cache
+
+      - name: Run pip check
+        continue-on-error: true
+        run: |
+          . venv/bin/activate
+          pip list | grep 'astroid \|pylint '
+          echo "------"
+          pip check
+
   pylint:
     name: Check pylint
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    needs:
+    runs-on: *runs-on-ubuntu
+    permissions: *permissions-read
+    needs: &needs-pylint
       - info
       - base
+      - pylint-base
     timeout-minutes: 20
     if: |
       github.event.inputs.mypy-only != 'true'
       && github.event.inputs.audit-licenses-only != 'true'
       || github.event.inputs.pylint-only == 'true'
     steps:
-      - name: Check out code from GitHub
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - *checkout
+      - *setup-python-default
+      - *cache-restore-python-default
+
+      - &pylint-clear-installed-versions
+        name: Remove installed astroid + pylint versions
+        run: |
+          . venv/bin/activate
+          pip uninstall -y astroid pylint
+      - &pylint-venv-cache-restore
+        name: Restore custom astroid + pylint versions in venv
+        id: cache-venv-astroid-pylint
+        uses: *actions-cache-restore
         with:
-          persist-credentials: false
-      - name: Set up Python ${{ env.DEFAULT_PYTHON }}
-        id: python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
-        with:
-          python-version: ${{ env.DEFAULT_PYTHON }}
-          check-latest: true
-      - name: Restore full Python ${{ env.DEFAULT_PYTHON }} virtual environment
-        id: cache-venv
-        uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
-        with:
-          path: venv
+          path: *path-pylint-venv-cache
           fail-on-cache-miss: true
           key: >-
-            ${{ runner.os }}-${{ runner.arch }}-${{ steps.python.outputs.python-version }}-${{
-            needs.info.outputs.python_cache_key }}
-      - name: Register pylint problem matcher
+            ${{ runner.os }}-${{ runner.arch }}-${{ steps.python.outputs.python-version }}-venv_pylint-${{
+            env.CACHE_VERSION }}-astroid_${{ needs.pylint-base.outputs.astroid-sha }}-pylint_${{
+            needs.pylint-base.outputs.pylint-sha }}
+      - &pylint-version-info
+        name: Version info
+        run: |
+          . venv/bin/activate
+          pip list | grep 'astroid \|pylint '
+          echo "------"
+          echo "astroid ${{ needs.pylint-base.outputs.astroid-sha }}"
+          echo "pylint  ${{ needs.pylint-base.outputs.pylint-sha }}"
+
+      - &problem-matcher-pylint
+        name: Register pylint problem matcher
         run: |
           echo "::add-matcher::.github/workflows/matchers/pylint.json"
       - name: Run pylint (fully)
@@ -718,12 +818,9 @@ jobs:
 
   pylint-tests:
     name: Check pylint on tests
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: read
-    needs:
-      - info
-      - base
+    runs-on: *runs-on-ubuntu
+    permissions: *permissions-read
+    needs: *needs-pylint
     timeout-minutes: 20
     if: |
       (github.event.inputs.mypy-only != 'true'
@@ -731,28 +828,15 @@ jobs:
         || github.event.inputs.pylint-only == 'true')
       && (needs.info.outputs.tests_glob || needs.info.outputs.test_full_suite == 'true')
     steps:
-      - name: Check out code from GitHub
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-      - name: Set up Python ${{ env.DEFAULT_PYTHON }}
-        id: python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
-        with:
-          python-version: ${{ env.DEFAULT_PYTHON }}
-          check-latest: true
-      - name: Restore full Python ${{ env.DEFAULT_PYTHON }} virtual environment
-        id: cache-venv
-        uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
-        with:
-          path: venv
-          fail-on-cache-miss: true
-          key: >-
-            ${{ runner.os }}-${{ runner.arch }}-${{ steps.python.outputs.python-version }}-${{
-            needs.info.outputs.python_cache_key }}
-      - name: Register pylint problem matcher
-        run: |
-          echo "::add-matcher::.github/workflows/matchers/pylint.json"
+      - *checkout
+      - *setup-python-default
+      - *cache-restore-python-default
+
+      - *pylint-clear-installed-versions
+      - *pylint-venv-cache-restore
+      - *pylint-version-info
+
+      - *problem-matcher-pylint
       - name: Run pylint (fully)
         if: needs.info.outputs.test_full_suite == 'true'
         run: |
