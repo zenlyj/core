@@ -469,6 +469,7 @@ async def test__figure_out_source(hass: HomeAssistant) -> None:
     mock_record = MagicMock(
         pathname="figure_out_source is False",
         lineno=5,
+        # pylint: disable-next=used-before-assignment
         exc_info=exc_info,
     )
     regex_str = f"({__file__})"
@@ -494,6 +495,7 @@ async def test_formatting_exception(hass: HomeAssistant) -> None:
     mock_record = MagicMock(
         pathname="figure_out_source is False",
         lineno=5,
+        # pylint: disable-next=used-before-assignment
         exc_info=exc_info,
         exc_text=None,
     )

@@ -44,6 +44,7 @@ def setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up the Dovado component."""
 
     hass.data[DOMAIN] = DovadoData(
+        # pylint: disable=undefined-variable  # integration is disabled
         dovado.Dovado(
             config[DOMAIN][CONF_USERNAME],
             config[DOMAIN][CONF_PASSWORD],
