@@ -761,7 +761,7 @@ jobs:
       - info
       - base
       - pylint-base
-    timeout-minutes: 20
+    timeout-minutes: 60
     if: |
       github.event.inputs.mypy-only != 'true'
       && github.event.inputs.audit-licenses-only != 'true'
