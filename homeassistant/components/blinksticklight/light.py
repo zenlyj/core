@@ -45,6 +45,7 @@ def setup_platform(
     name = config[CONF_NAME]
     serial = config[CONF_SERIAL]
 
+    # pylint: disable=undefined-variable  # integration is disabled
     stick = blinkstick.find_by_serial(serial)
 
     add_entities([BlinkStickLight(stick, name)], True)
