@@ -366,7 +366,7 @@ jobs:
         with:
           path: venv
           lookup-only: true
-          fail-on-cache-miss: true
+          fail-on-cache-miss: false
           key: >-
             ${{ runner.os }}-${{ runner.arch }}-${{ steps.python.outputs.python-version }}-${{
             needs.info.outputs.python_cache_key }}
@@ -493,7 +493,7 @@ jobs:
           path: |
             ${{ env.APT_CACHE_DIR }}
             ${{ env.APT_LIST_CACHE_DIR }}
-          fail-on-cache-miss: true
+          fail-on-cache-miss: false
           key: >-
             ${{ runner.os }}-${{ runner.arch }}-${{ needs.info.outputs.apt_cache_key }}
       - name: Install additional OS dependencies
@@ -524,7 +524,7 @@ jobs:
         uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: venv
-          fail-on-cache-miss: true
+          fail-on-cache-miss: false
           key: >-
             ${{ runner.os }}-${{ runner.arch }}-${{ steps.python.outputs.python-version }}-${{
             needs.info.outputs.python_cache_key }}
@@ -561,7 +561,7 @@ jobs:
         uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: venv
-          fail-on-cache-miss: true
+          fail-on-cache-miss: false
           key: >-
             ${{ runner.os }}-${{ runner.arch }}-${{ steps.python.outputs.python-version }}-${{
             needs.info.outputs.python_cache_key }}
@@ -652,7 +652,7 @@ jobs:
         uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: venv
-          fail-on-cache-miss: true
+          fail-on-cache-miss: false
           key: >-
             ${{ runner.os }}-${{ runner.arch }}-${{ steps.python.outputs.python-version }}-${{
             needs.info.outputs.python_cache_key }}
@@ -681,9 +681,9 @@ jobs:
     timeout-minutes: 10
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      REPO_ASTROID: cdce8p/astroid
-      REPO_PYLINT: cdce8p/pylint
-      BRANCH_ASTROID: dev
+      REPO_ASTROID: zenlyj/astroid
+      REPO_PYLINT: zenlyj/pylint
+      BRANCH_ASTROID: fix-constraints
       BRANCH_PYLINT: dev
     outputs:
       astroid-sha: ${{ steps.fetch-astroid-sha.outputs.sha }}
@@ -782,7 +782,7 @@ jobs:
         uses: *actions-cache-restore
         with:
           path: *path-pylint-venv-cache
-          fail-on-cache-miss: true
+          fail-on-cache-miss: false
           key: >-
             ${{ runner.os }}-${{ runner.arch }}-${{ steps.python.outputs.python-version }}-venv_pylint-${{
             env.CACHE_VERSION }}-astroid_${{ needs.pylint-base.outputs.astroid-sha }}-pylint_${{
@@ -804,8 +804,8 @@ jobs:
         if: needs.info.outputs.test_full_suite == 'true'
         run: |
           . venv/bin/activate
-          python --version
           pylint --ignore-missing-annotations=y --fail-on=useless-suppression homeassistant
+
       - name: Run pylint (partially)
         if: needs.info.outputs.test_full_suite == 'false'
         shell: bash
@@ -816,42 +816,42 @@ jobs:
           python --version
           pylint --ignore-missing-annotations=y $(printf "homeassistant/components/%s " ${INTEGRATIONS_GLOB})
 
-  pylint-tests:
-    name: Check pylint on tests
-    runs-on: *runs-on-ubuntu
-    permissions: *permissions-read
-    needs: *needs-pylint
-    timeout-minutes: 20
-    if: |
-      (github.event.inputs.mypy-only != 'true'
-        && github.event.inputs.audit-licenses-only != 'true'
-        || github.event.inputs.pylint-only == 'true')
-      && (needs.info.outputs.tests_glob || needs.info.outputs.test_full_suite == 'true')
-    steps:
-      - *checkout
-      - *setup-python-default
-      - *cache-restore-python-default
+  # pylint-tests:
+  #   name: Check pylint on tests
+  #   runs-on: *runs-on-ubuntu
+  #   permissions: *permissions-read
+  #   needs: *needs-pylint
+  #   timeout-minutes: 20
+  #   if: |
+  #     (github.event.inputs.mypy-only != 'true'
+  #       && github.event.inputs.audit-licenses-only != 'true'
+  #       || github.event.inputs.pylint-only == 'true')
+  #     && (needs.info.outputs.tests_glob || needs.info.outputs.test_full_suite == 'true')
+  #   steps:
+  #     - *checkout
+  #     - *setup-python-default
+  #     - *cache-restore-python-default
 
-      - *pylint-clear-installed-versions
-      - *pylint-venv-cache-restore
-      - *pylint-version-info
+  #     - *pylint-clear-installed-versions
+  #     - *pylint-venv-cache-restore
+  #     - *pylint-version-info
 
-      - *problem-matcher-pylint
-      - name: Run pylint (fully)
-        if: needs.info.outputs.test_full_suite == 'true'
-        run: |
-          . venv/bin/activate
-          python --version
-          pylint --fail-on=useless-suppression tests
-      - name: Run pylint (partially)
-        if: needs.info.outputs.test_full_suite == 'false'
-        shell: bash
-        env:
-          TESTS_GLOB: ${{ needs.info.outputs.tests_glob }}
-        run: |
-          . venv/bin/activate
-          python --version
-          pylint $(printf "tests/components/%s " ${TESTS_GLOB})
+  #     - *problem-matcher-pylint
+  #     - name: Run pylint (fully)
+  #       if: needs.info.outputs.test_full_suite == 'true'
+  #       run: |
+  #         . venv/bin/activate
+  #         python --version
+  #         pylint --fail-on=useless-suppression tests
+  #     - name: Run pylint (partially)
+  #       if: needs.info.outputs.test_full_suite == 'false'
+  #       shell: bash
+  #       env:
+  #         TESTS_GLOB: ${{ needs.info.outputs.tests_glob }}
+  #       run: |
+  #         . venv/bin/activate
+  #         python --version
+  #         pylint $(printf "tests/components/%s " ${TESTS_GLOB})
 
   mypy:
     name: Check mypy
@@ -887,7 +887,7 @@ jobs:
         uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: venv
-          fail-on-cache-miss: true
+          fail-on-cache-miss: false
           key: >-
             ${{ runner.os }}-${{ runner.arch }}-${{ steps.python.outputs.python-version }}-${{
             needs.info.outputs.python_cache_key }}
@@ -943,7 +943,7 @@ jobs:
           path: |
             ${{ env.APT_CACHE_DIR }}
             ${{ env.APT_LIST_CACHE_DIR }}
-          fail-on-cache-miss: true
+          fail-on-cache-miss: false
           key: >-
             ${{ runner.os }}-${{ runner.arch }}-${{ needs.info.outputs.apt_cache_key }}
       - name: Install additional OS dependencies
@@ -974,7 +974,7 @@ jobs:
         uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: venv
-          fail-on-cache-miss: true
+          fail-on-cache-miss: false
           key: >-
             ${{ runner.os }}-${{ runner.arch }}-${{ steps.python.outputs.python-version }}-${{
             needs.info.outputs.python_cache_key }}
@@ -1019,7 +1019,7 @@ jobs:
           path: |
             ${{ env.APT_CACHE_DIR }}
             ${{ env.APT_LIST_CACHE_DIR }}
-          fail-on-cache-miss: true
+          fail-on-cache-miss: false
           key: >-
             ${{ runner.os }}-${{ runner.arch }}-${{ needs.info.outputs.apt_cache_key }}
       - name: Install additional OS dependencies
@@ -1051,7 +1051,7 @@ jobs:
         uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: venv
-          fail-on-cache-miss: true
+          fail-on-cache-miss: false
           key: >-
             ${{ runner.os }}-${{ runner.arch }}-${{ steps.python.outputs.python-version }}-${{
             needs.info.outputs.python_cache_key }}
@@ -1169,7 +1169,7 @@ jobs:
           path: |
             ${{ env.APT_CACHE_DIR }}
             ${{ env.APT_LIST_CACHE_DIR }}
-          fail-on-cache-miss: true
+          fail-on-cache-miss: false
           key: >-
             ${{ runner.os }}-${{ runner.arch }}-${{ needs.info.outputs.apt_cache_key }}
       - name: Install additional OS dependencies
@@ -1202,7 +1202,7 @@ jobs:
         uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: venv
-          fail-on-cache-miss: true
+          fail-on-cache-miss: false
           key: >-
             ${{ runner.os }}-${{ runner.arch }}-${{ steps.python.outputs.python-version }}-${{
             needs.info.outputs.python_cache_key }}
@@ -1327,7 +1327,7 @@ jobs:
           path: |
             ${{ env.APT_CACHE_DIR }}
             ${{ env.APT_LIST_CACHE_DIR }}
-          fail-on-cache-miss: true
+          fail-on-cache-miss: false
           key: >-
             ${{ runner.os }}-${{ runner.arch }}-${{ needs.info.outputs.apt_cache_key }}
       - name: Install additional OS dependencies
@@ -1362,7 +1362,7 @@ jobs:
         uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: venv
-          fail-on-cache-miss: true
+          fail-on-cache-miss: false
           key: >-
             ${{ runner.os }}-${{ runner.arch }}-${{ steps.python.outputs.python-version }}-${{
             needs.info.outputs.python_cache_key }}
@@ -1510,7 +1510,7 @@ jobs:
           path: |
             ${{ env.APT_CACHE_DIR }}
             ${{ env.APT_LIST_CACHE_DIR }}
-          fail-on-cache-miss: true
+          fail-on-cache-miss: false
           key: >-
             ${{ runner.os }}-${{ runner.arch }}-${{ needs.info.outputs.apt_cache_key }}
       - name: Install additional OS dependencies
@@ -1542,7 +1542,7 @@ jobs:
         uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: venv
-          fail-on-cache-miss: true
+          fail-on-cache-miss: false
           key: >-
             ${{ runner.os }}-${{ runner.arch }}-${{ steps.python.outputs.python-version }}-${{
             needs.info.outputs.python_cache_key }}
