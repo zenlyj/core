@@ -683,7 +683,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       REPO_ASTROID: zenlyj/astroid
       REPO_PYLINT: zenlyj/pylint
-      BRANCH_ASTROID: fix-constraints
+      BRANCH_ASTROID: bool-exp-constraint
       BRANCH_PYLINT: dev
     outputs:
       astroid-sha: ${{ steps.fetch-astroid-sha.outputs.sha }}
